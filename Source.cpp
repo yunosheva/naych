@@ -12,14 +12,14 @@ size_t n = 40;
 size_t m = 10;
 double teta = 1. / 3.;
 int tau = 1;
-size_t M = 10;
+size_t M = 300;
 double full_rho;
 double full_rho_ux;
 double full_rho_uy;
-double g = 0;
+double g = 1e-5;
 
 
-/* равновесные функции распределения, sp - скалярное произведение, u2 - вектор в квадрате */
+/* равновесные функции распределения */
 double F_e(double sp, double u2, double w, double rho) {
 	return w * rho* (1 + sp / teta + sp * sp / (2. * teta * teta) - u2 / 2. / teta);
 }
@@ -29,14 +29,21 @@ double F(double f, double f_eq, double f_eq1) {
 	return f + (f_eq - f) / tau + f_eq1 - f_eq;
 }
 
+/* задаем параболку */
+
+double Par(int y) {
+	return -3*g/2/(tau - 1./2.)*(y - 1./2.)*(y - 1./2. - m);
+}
 
 /* задаем начальную скорость и изменение скорости */
-vector<vector<double>> ux(n + 2, vector<double>(m + 2));
-vector<vector<double>> uy(n + 2, vector<double>(m + 2));
+vector<vector<double>> ux(n, vector<double>(m));
+vector<vector<double>> uy(n, vector<double>(m));
+
+
 
 
 /* задаем начальную плотность */
-vector<vector<double>> rho(n + 2, vector<double>(m + 2));
+vector<vector<double>> rho(n, vector<double>(m));
 
 
 void SaveVTKFile(int tStep)
@@ -66,12 +73,16 @@ void SaveVTKFile(int tStep)
 	vtk_file << "POINT_DATA " << n * m << endl;
 	vtk_file << "SCALARS rho double 1\n";
 	vtk_file << "LOOKUP_TABLE default\n";
-	for (int j = 1; j < m + 1; j++)
-		for (int i = 1; i < n + 1; i++) vtk_file << rho[i][j] << " ";
+	for (int j = 0; j < m; j++)
+		for (int i = 0; i < n; i++) vtk_file << rho[i][j] << " ";
 	vtk_file << endl;
 	vtk_file << "VECTORS uflow double\n";
-	for (int j = 1; j < m + 1; j++)
-		for (int i = 1; i < n + 1; i++) vtk_file << ux[i][j] + g / 2 << "  " << uy[i][j] << "  0.0" << " ";
+	for (int j = 0; j < m; j++)
+		for (int i = 0; i < n; i++) vtk_file << ux[i][j] + g / 2 << "  " << uy[i][j] << "  0.0" << " ";
+	vtk_file << endl;
+	vtk_file << "VECTORS ux double\n";
+		for (int i = 0; i < m; i++) 
+			for (int j = 0; j < n; j++)vtk_file << Par(dt*(i+1)) <<  "  0.0  " << "  0.0" << " ";
 	vtk_file << endl;
 
 	vtk_file.close();
@@ -82,26 +93,19 @@ double sum = 0;
 int main() {
 	system("mkdir VTK");
 	/* задаем начальную плотность */
-	for (int j = 1; j < m + 1; j++) {
-		for (int i = 1; i < n + 1; i++) {
+	for (int j = 0; j < m ; j++) {
+		for (int i = 0; i < n; i++) {
 			rho[i][j] = 1.0;
 		};
 	};
-	rho[5][5] = 0;
-	rho[5][6] = 0;
-	rho[6][5] = 0;
-	rho[6][6] = 0;
+	/*for (int j = m / 2; j < m; j++) {
+		for (int i = 0; i < n; i++) {
+			rho[i][j] = 2.0;
+		};
+	};*/
 
-	for (int j = 0; j < m + 2; j++) {
-		rho[n + 1][j] = 0.95;
-	};
-
-	for (int j = 0; j < m + 2; j++) {
-		rho[0][j] = 1.05;
-	};
-
-	for (int i = 1; i < n + 1; i++) {
-		for (int j = 1; j < m + 1; j++) {
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < m; j++) {
 			sum += rho[i][j];
 		};
 	};
@@ -156,7 +160,7 @@ int main() {
 	for (size_t i = 1; i < n + 1; i++) {
 		for (size_t j = 1; j < m + 1; j++) {
 			for (int k = 0; k < 9; k++) {
-				f[k][i][j] = F_e(c[k][0] * ux[i][j] + c[k][1] * uy[i][j], ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j], w[k], rho[i][j]);
+				f[k][i][j] = F_e(c[k][0] * ux[i - 1][j - 1] + c[k][1] * uy[i - 1][j - 1], ux[i - 1][j - 1] * ux[i - 1][j - 1] + uy[i - 1][j - 1] * uy[i - 1][j - 1], w[k], rho[i - 1][j - 1]);
 			};
 		};
 	};
@@ -171,7 +175,11 @@ int main() {
 
 		buf = f;
 
-		for (size_t j = 1; j < n + 1; j++) {
+		for (int j = 1; j < m + 1; j++) {
+			buf[1][0][j] = buf[1][n][j];
+			buf[3][n + 1][j] = buf[3][1][j];
+		}
+		for (int j = 1; j < n + 1; j++) {
 			buf[2][j][0] = buf[4][j][1];
 			buf[4][j][m + 1] = buf[2][j][m];
 			buf[6][j + 1][0] = buf[8][j][1];
@@ -180,60 +188,40 @@ int main() {
 			buf[7][j + 1][m + 1] = buf[5][j][m];
 		}
 
-		/* учет задания градиента давлений */
-		for (size_t j = 1; j < m + 1; j++) {
-			for (size_t k = 1; k < 9; k++) {
-				buf[k][0][j] = buf[k][1][j] + F_e(0, 0, w[k], rho[0][j]) - F_e(0, 0, w[k], rho[1][j]);
-				buf[k][n + 1][j] = buf[k][n][j] + F_e(0, 0, w[k], rho[n + 1][j]) - F_e(0, 0, w[k], rho[n][j]);
-			}
+		for (size_t j = 1; j < m; j++) {
+			buf[5][0][j] = buf[5][n][j];
+			buf[6][n + 1][j] = buf[6][1][j];
 		}
 
-		/* отражение от квадратика */
-		for (size_t i = 5; i < 7; i++) {
-			buf[4][i][5] = buf[2][i][4];
-			buf[7][i][5] = buf[5][i - 1][4];
-			buf[8][i][5] = buf[6][i + 1][4];
-
-			buf[1][6][i] = buf[3][7][i];
-			buf[5][6][i] = buf[7][7][i + 1];
-			buf[8][6][i] = buf[6][7][i - 1];
-
-			buf[2][i][6] = buf[4][i][7];
-			buf[5][i][6] = buf[7][i + 1][7];
-			buf[6][i][6] = buf[8][i - 1][7];
-
-			buf[3][5][i] = buf[1][4][i];
-			buf[7][5][i] = buf[5][4][i - 1];
-			buf[6][5][i] = buf[8][4][i + 1];
+		for (size_t j = 2; j < m + 1; j++) {
+			buf[7][n + 1][j] = buf[7][1][j];
+			buf[8][0][j] = buf[8][n][j];
 		}
 
 
-
-
-		for (size_t i = 1; (i < n + 1) && (i != 5) && (i != 6); i++) {
-			for (size_t j = 1; (j < m + 1) && (j != 5) && (j != 6); j++) {
+		for (size_t i = 1; i < n + 1; i++) {
+			for (size_t j = 1; j < m + 1; j++) {
 				for (size_t k = 1; k < 9; k++) {
 					f[k][i][j] = buf[k][i + dx[k]][j + dy[k]];
 				}
 			}
 		};
-		/* vector <int> dx = { 0, -1, 0, 1, 0, -1, 1, 1, -1 };
-		   vector <int> dy = { 0, 0, -1, 0, 1, -1, -1, 1, 1 }; */
+
 
 		/* посчитаем новую плотность */
 		for (size_t i = 1; i < n + 1; i++) {
 			for (size_t j = 1; j < m + 1; j++) {
-				rho[i][j] = f[0][i][j];
+				rho[i - 1][j - 1] = f[0][i][j];
 				for (int k = 1; k < 9; k++) {
-					rho[i][j] += f[k][i][j];
+					rho[i - 1][j - 1] += f[k][i][j];
 				};
 			};
 		};
 
 		/* проверяем закон сохранения массы */
 		full_rho = 0;
-		for (int i = 1; i < n + 1; i++) {
-			for (int j = 1; j < m + 1; j++) {
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < m; j++) {
 				full_rho += rho[i][j];
 			};
 		};
@@ -244,11 +232,11 @@ int main() {
 
 		for (size_t i = 1; i < n + 1; i++) {
 			for (size_t j = 1; j < m + 1; j++) {
-				ux[i][j] = f[1][i][j] * c[1][0] / rho[i][j];
-				uy[i][j] = f[1][i][j] * c[1][1] / rho[i][j];
+				ux[i - 1][j - 1] = f[1][i][j] * c[1][0] / rho[i - 1][j - 1];
+				uy[i - 1][j - 1] = f[1][i][j] * c[1][1] / rho[i - 1][j - 1];
 				for (int k = 2; k < 9; k++) {
-					ux[i][j] += f[k][i][j] * c[k][0] / rho[i][j];
-					uy[i][j] += f[k][i][j] * c[k][1] / rho[i][j];
+					ux[i - 1][j - 1] += f[k][i][j] * c[k][0] / rho[i - 1][j - 1];
+					uy[i - 1][j - 1] += f[k][i][j] * c[k][1] / rho[i - 1][j - 1];
 				}
 			};
 		};
@@ -256,8 +244,8 @@ int main() {
 		/* проверяем закон сохранения импульса */
 		full_rho_ux = 0;
 		full_rho_uy = 0;
-		for (int i = 1; i < n + 1; i++) {
-			for (int j = 1; j < m + 1; j++) {
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < m; j++) {
 				full_rho_ux += rho[i][j] * ux[i][j];
 				full_rho_uy += rho[i][j] * uy[i][j];
 			};
@@ -272,16 +260,25 @@ int main() {
 			for (size_t j = 1; j < m + 1; j++) {
 				for (int k = 0; k < 9; k++) {
 					f[k][i][j] = F(f[k][i][j],
-						F_e(c[k][0] * ux[i][j] + c[k][1] * uy[i][j], ux[i][j] * ux[i][j] + uy[i][j] * uy[i][j], w[k], rho[i][j]),
-						F_e(c[k][0] * (ux[i][j] + g) + c[k][1] * uy[i][j], (ux[i][j] + g) * (ux[i][j] + g) + uy[i][j] * uy[i][j], w[k], rho[i][j]));
+						F_e(c[k][0] * ux[i - 1][j - 1] + c[k][1] * uy[i - 1][j - 1], ux[i - 1][j - 1] * ux[i - 1][j - 1] + uy[i - 1][j - 1] * uy[i - 1][j - 1], w[k], rho[i - 1][j - 1]),
+						F_e(c[k][0] * (ux[i - 1][j - 1] + g) + c[k][1] * uy[i - 1][j - 1], (ux[i - 1][j - 1] + g) * (ux[i - 1][j - 1] + g) + uy[i - 1][j - 1] * uy[i - 1][j - 1], w[k], rho[i - 1][j - 1]));
 				};
 			};
 		};
 
+		/*if (t % 10 == 0)
+		{
+			SaveVTKFile(t);
+		}*/
 		SaveVTKFile(t);
-
+		/*for (size_t i = 0; i < n ; i++) {
+			for (size_t j = 0; j < m ; j++) {
+				cout << uy[i][j] << " ";
+			}
+			cout << "\n";
+		}*/
 	}
-
+	
 
 	return 0;
 }
